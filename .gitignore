@@ -14,9 +14,10 @@ sysinfo.txt
 *.pidb.meta
 
 ###
-# Datasets
+# Datasets and models
 ###
 ImageSearchTests/Datasets
+ImageSearchTests/RCNNTestandTraining/models
 
 ###
 # VS/MD solution and project files
