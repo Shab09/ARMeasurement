@@ -142,19 +142,38 @@ def show_inference(model, image_path, counter):
 
   im = Image.fromarray(image_np)
   im.save(str(counter) + ".jpeg")
-  
-  #(Image.fromarray(image_np))
 
+# Run it on each test image and show the results (for CV2):
+while True:
+  ret, image_np = cap.read()
+  # Actual detection.
+  output_dict = run_inference_for_single_image(detection_model, image_np)
+  # Visualization of the results of a detection.
+  vis_util.visualize_boxes_and_labels_on_image_array(
+      image_np,
+      output_dict['detection_boxes'],
+      output_dict['detection_classes'],
+      output_dict['detection_scores'],
+      category_index,
+      instance_masks=output_dict.get('detection_masks_reframed', None),
+      use_normalized_coordinates=True,
+      line_thickness=8)
+  cv2.imshow("Do you detect?", cv2.resize(image_np, (800, 600)))
+  if cv2.waitKey(1) & 0xFF == ord('q'):
+    cv2.destroyAllWindows()
+    break
+
+
+"""Detection MODEL
 counter = 1
 print ("Detection model...")
 for image_path in TEST_IMAGE_PATHS:
   runTime = current_milli_time()
-  show_inference(detection_model, image_path, counter)
   runTime = current_milli_time() - runTime
   print (str(counter) + " " + str(runTime) + " milliseconds")
   counter = counter + 1
 
-"""MASKING MODEL
+""""""MASKING MODEL
 # ## Instance Segmentation
 model_name = "mask_rcnn_inception_resnet_v2_atrous_coco_2018_01_28"
 masking_model = load_model("mask_rcnn_inception_resnet_v2_atrous_coco_2018_01_28")
