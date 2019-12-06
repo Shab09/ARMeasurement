@@ -1,11 +1,12 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using UnityEngine.Networking;
 using UnityEngine;
 using UnityEngine.UI;
 using Vuforia;
 
-public class ButtonLoadData : MonoBehaviour
+public class ButtonLoadData : MonoBehaviour, ITrackableEventHandler
 {
     #region Structs
     struct Article
@@ -24,12 +25,16 @@ public class ButtonLoadData : MonoBehaviour
     public Dropdown dropdownSizes;
     public UnityEngine.UI.Image imageDebug;
     public Text debugText;
+    public GameObject imageTarget;
     #endregion //PublicComponents
 
     #region PrivateVariables
+    private static string apiUrlPrefix = "http://192.168.18.56:4444/ARMApi/";
     private PIXEL_FORMAT mPixelFormat = PIXEL_FORMAT.UNKNOWN_FORMAT;
     private bool mAccessCameraImage = true;
     private bool mFormatRegistered = false;
+    private bool mTargetIsTracked = false;
+    private TrackableBehaviour mTrackableBehaviour;
     private string mPurchaseDataPath;
     private string mResourceDataPath;
     private string mAndroidPersistentDatapath;
@@ -62,18 +67,24 @@ public class ButtonLoadData : MonoBehaviour
         dropDownArticles.onValueChanged.AddListener(changeSizes);
 
         // Set pixel format for camera
-        #if UNITY_EDITOR
-            mPixelFormat = PIXEL_FORMAT.GRAYSCALE; // Need Grayscale for Editor
-        #else
+#if UNITY_EDITOR
+        mPixelFormat = PIXEL_FORMAT.GRAYSCALE; // Need Grayscale for Editor
+#else
             mPixelFormat = PIXEL_FORMAT.RGB888; // Use RGB888 for mobile
-        #endif
+#endif
 
         // Register Vuforia callbacks
         VuforiaARController.Instance.RegisterVuforiaStartedCallback(OnVuforiaStarted);
         VuforiaARController.Instance.RegisterOnPauseCallback(OnPause);
+        if (imageTarget.GetComponent<TrackableBehaviour>())
+        {
+            mTrackableBehaviour = imageTarget.GetComponent<TrackableBehaviour>();
+            mTrackableBehaviour.RegisterTrackableEventHandler(this);
+        }
         // VuforiaARController.Instance.RegisterTrackablesUpdatedCallback(OnTrackablesUpdated);
     }
 
+    #region Event_Listeners
     // For load data button
     void loadData()
     {
@@ -183,10 +194,6 @@ public class ButtonLoadData : MonoBehaviour
         dropDownArticles.AddOptions(mOptiondataArticles);
         dropdownSizes.AddOptions(mOptiondataSizes);
     }
-    void addDebugInfo(string message)
-    {
-        debugText.text += "\n--" + message;
-    }
 
     // For article dropdown's onchange listener
     void changeSizes(int index)
@@ -209,11 +216,14 @@ public class ButtonLoadData : MonoBehaviour
     // To capture image
     void captureImage()
     {
+        if (!trackingAvailable())
+            return;
+
         if (mFormatRegistered && mAccessCameraImage)
         {
             Vuforia.Image image = CameraDevice.Instance.GetCameraImage(mPixelFormat);
             if (image != null)
-            {   
+            {
                 Texture2D captureTexture = new Texture2D(200, 500);
                 image.CopyToTexture(captureTexture, false);
                 byte[] pixels = captureTexture.EncodeToJPG();
@@ -221,20 +231,44 @@ public class ButtonLoadData : MonoBehaviour
                 if (pixels != null && pixels.Length > 0)
                 {
                     string filename = "/SS_test.jpeg";
-                    #if UNITY_EDITOR
-                        File.WriteAllBytes(mPurchaseDataPath + "outputs/CameraCapture_" + System.DateTime.Now.Year + "-" + System.DateTime.Now.Month + "-" + System.DateTime.Now.Day + ".jpeg", pixels);
-                        addDebugInfo(mAndroidPersistentDatapath);
-                    #else 
+#if UNITY_EDITOR
+                    File.WriteAllBytes(mPurchaseDataPath + "outputs/CameraCapture_" + System.DateTime.Now.Year + "-" + System.DateTime.Now.Month + "-" + System.DateTime.Now.Day + ".jpeg", pixels);
+                    addDebugInfo(mAndroidPersistentDatapath);
+#else
                         string path = mAndroidPersistentDatapath + filename;
                         File.WriteAllBytes(path, pixels);
                         Debug.Log(path);
                         addDebugInfo(path);
-                    #endif
+#endif
+                    StartCoroutine(sendImage(pixels));
                 }
             }
         }
     }
+    #endregion //Event_Listeners
 
+    #region Misc_Functions
+    // If Vuforia camera is tracking a target
+    bool trackingAvailable()
+    {
+        if (mTargetIsTracked)
+            return true;
+        else
+            return false;
+    }
+
+
+    #endregion //Misc_Functions
+
+    #region Debug_Stuff
+    void addDebugInfo(string message)
+    {
+        debugText.text += "\n--" + message;
+    }
+
+    #endregion //Debug_Stuff
+
+    #region Vuforia_Functions
     // for vuforia started callback
     private void OnVuforiaStarted()
     {
@@ -293,5 +327,37 @@ public class ButtonLoadData : MonoBehaviour
         mFormatRegistered = false;
     }
 
+    // For changing state of the trackable object being detected
+    public void OnTrackableStateChanged(TrackableBehaviour.Status previousStatus, TrackableBehaviour.Status newStatus)
+    {
+        if (newStatus == TrackableBehaviour.Status.DETECTED || newStatus == TrackableBehaviour.Status.TRACKED || newStatus == TrackableBehaviour.Status.EXTENDED_TRACKED)
+        {
+            mTargetIsTracked = true;
+        }
+        else
+        {
+            mTargetIsTracked = false;
+        }
+    }
 
+    #endregion //Vuforia_Functions
+
+    #region HTTP_Functions
+    IEnumerator sendImage(byte[] image)
+    {
+        //UnityWebRequest request = UnityWebRequest.Put(apiUrlPrefix + "test.php", data);
+        UnityWebRequest request = UnityWebRequest.Put(apiUrlPrefix + "pythonTest.py/", image);
+        yield return request.SendWebRequest();
+
+        if (request.isNetworkError || request.isHttpError)
+        {
+            Debug.Log(request.error);
+            Debug.Log(request.url);
+        }
+        else
+        {
+            Debug.Log(request.downloadHandler.text);
+        }
+    }
+    #endregion // HTTP_Functions
 }
